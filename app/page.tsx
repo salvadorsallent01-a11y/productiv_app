@@ -1,276 +1,242 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Chart as ChartJS,
   ArcElement,
   Tooltip,
-  Legend,
+  Legend as LegendJS,
   CategoryScale,
   LinearScale,
   PointElement,
   LineElement,
   BarElement,
-  Title,
+  Title as TitleJS,
 } from 'chart.js';
-import { Doughnut, Bar } from 'react-chartjs-2';
+import { Doughnut } from 'react-chartjs-2';
+import { useProductivityApp } from '@/hooks/useProductivityApp';
+import { Task, Category, Priority } from './types';
+import { TaskList } from '@/components/TaskList';
+import { FilterBar } from '@/components/FilterBar';
+import { StatsCard } from '@/components/StatsCard';
+import { BadgeDisplay } from '@/components/BadgeDisplay';
+import { WeeklyGoal } from '@/components/WeeklyGoal';
+import { MotivationalQuote } from '@/components/MotivationalQuote';
+import { ExportButton } from '@/components/ExportButton';
+import { AddTaskModal } from '@/components/AddTaskModal';
+import { TrendsChart } from '@/components/TrendsChart';
+import { format, isToday, isYesterday } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { motion } from 'framer-motion';
+import {
+  BarChart2, Target, Trophy, Clock, CalendarDays, Edit,
+  Flame,
+  CheckCircle2
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 ChartJS.register(
   ArcElement,
   Tooltip,
-  Legend,
+  LegendJS,
   CategoryScale,
   LinearScale,
   PointElement,
   LineElement,
   BarElement,
-  Title
+  TitleJS
 );
 
-const STORAGE_KEY = 'productivity_data_v1';
-const TASKS_COUNT = 7;
-
-const tasks = [
-  'Trabajo',
-  'Matar a Alfonsín',
-  'Oxygen',
-  'Ojos de Video',
-  'Gym',
-  'Cardio',
-  'Bici / Caminata',
-];
-
-const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-
-interface DataType {
-  [key: string]: boolean[];
-}
-
 export default function Home() {
-  const [data, setData] = useState<DataType>({});
-  const [currentDay, setCurrentDay] = useState('Lunes');
-  const [mounted, setMounted] = useState(false);
+  const {
+    appState,
+    currentDate,
+    setCurrentDate,
+    currentDayTasks,
+    handleAddTask,
+    handleToggleTask,
+    handleDeleteTask,
+    handleUpdateTask,
+    handleReorderTasks,
+    handleUpdateWeeklyGoal,
+    weeklyStats,
+    dailyCompletionsLast30Days,
+  } = useProductivityApp();
 
-  useEffect(() => {
-    setMounted(true);
-    const saved = localStorage.getItem(STORAGE_KEY);
-    const initialData: DataType = saved ? JSON.parse(saved) : {};
-    
-    days.forEach(day => {
-      if (!initialData[day]) {
-        initialData[day] = Array(TASKS_COUNT).fill(false);
-      }
-    });
-    
-    setData(initialData);
-  }, []);
+  const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<Category | 'All'>('All');
+  const [selectedPriorityFilter, setSelectedPriorityFilter] = useState<Priority | 'All'>('All');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
-  useEffect(() => {
-    if (Object.keys(data).length > 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  const filteredTasks = useMemo(() => {
+    let tasks = currentDayTasks;
+
+    if (selectedCategoryFilter !== 'All') {
+      tasks = tasks.filter(task => task.category === selectedCategoryFilter);
     }
-  }, [data]);
 
-  const toggleTask = (index: number) => {
-    setData(prev => ({
-      ...prev,
-      [currentDay]: prev[currentDay].map((checked, i) => i === index ? !checked : checked)
-    }));
-  };
-
-  const resetDay = () => {
-    if (confirm(`¿Estás seguro de reiniciar el ${currentDay}?`)) {
-      setData(prev => ({
-        ...prev,
-        [currentDay]: Array(TASKS_COUNT).fill(false)
-      }));
+    if (selectedPriorityFilter !== 'All') {
+      tasks = tasks.filter(task => task.priority === selectedPriorityFilter);
     }
-  };
 
-  const dayData = data[currentDay] || Array(TASKS_COUNT).fill(false);
-  const completed = dayData.filter(Boolean).length;
-  const percentage = Math.round((completed / TASKS_COUNT) * 100);
+    if (searchQuery) {
+      tasks = tasks.filter(task => 
+        task.title.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    return tasks;
+  }, [currentDayTasks, selectedCategoryFilter, selectedPriorityFilter, searchQuery]);
+
+  const currentDayData = appState.days[currentDate];
+  const completedToday = currentDayData?.tasks.filter(t => t.completed).length || 0;
+  const totalTasksToday = currentDayData?.tasks.length || 0;
+  const percentageToday = totalTasksToday > 0 ? Math.round((completedToday / totalTasksToday) * 100) : 0;
 
   const pieData = {
     labels: ['Completado', 'Pendiente'],
     datasets: [{
-      data: [completed, TASKS_COUNT - completed],
-      backgroundColor: ['#22c55e', '#e5e7eb'],
+      data: [completedToday, totalTasksToday - completedToday],
+      backgroundColor: ['hsl(var(--primary))', 'hsl(var(--muted))'],
       borderWidth: 0,
     }],
   };
 
-  const pieOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    cutout: '70%',
-    plugins: {
-      legend: { display: false },
-    },
-  };
-
-  // Calculate weekly stats
-  let totalCompleted = 0;
-  let totalTasks = 0;
-  let bestDay = '-';
-  let bestDayScore = -1;
-  let streak = 0;
-  let maxStreak = 0;
-
-  days.forEach(day => {
-    const dayDataArray = data[day] || Array(TASKS_COUNT).fill(false);
-    const completedCount = dayDataArray.filter(Boolean).length;
-    totalCompleted += completedCount;
-    totalTasks += TASKS_COUNT;
-
-    if (completedCount > bestDayScore) {
-      bestDayScore = completedCount;
-      bestDay = day;
-    }
-
-    if (completedCount === TASKS_COUNT) {
-      streak++;
-      maxStreak = Math.max(maxStreak, streak);
-    } else {
-      streak = 0;
-    }
-  });
-
-  const weeklyAvg = totalTasks > 0 ? Math.round((totalCompleted / totalTasks) * 100) : 0;
-
-  const weeklyData = {
-    labels: days,
-    datasets: [{
-      label: 'Tareas Completadas',
-      data: days.map(day => (data[day] || Array(TASKS_COUNT).fill(false)).filter(Boolean).length),
-      backgroundColor: '#667eea',
-      borderRadius: 8,
-    }],
-  };
-
-  const barOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    scales: {
-      y: {
-        beginAtZero: true,
-        max: 7,
-        ticks: { stepSize: 1 },
-      },
-    },
-    plugins: {
-      legend: { display: false },
-    },
-  };
-
-  if (!mounted) return <div className="min-h-screen bg-gradient-to-br from-indigo-500 to-purple-600" />;
+  const dayDisplay = useMemo(() => {
+    const date = new Date(currentDate);
+    if (isToday(date)) return "Hoy";
+    if (isYesterday(date)) return "Ayer";
+    return format(date, 'EEEE, d MMM yyyy', { locale: es });
+  }, [currentDate]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-500 to-purple-600 p-4 md:p-8">
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl md:text-5xl font-bold text-white text-center mb-8 drop-shadow-lg">
-          🎯 Dashboard de Productividad
-        </h1>
+    <div className="min-h-screen bg-background text-foreground p-4 md:p-8 font-sans">
+      <div className="max-w-7xl mx-auto space-y-8">
 
-        {/* Day Selector */}
-        <div className="text-center mb-8">
-          <select
-            value={currentDay}
-            onChange={(e) => setCurrentDay(e.target.value)}
-            className="px-6 py-3 text-lg rounded-xl border-none bg-white shadow-lg cursor-pointer hover:shadow-xl transition-shadow"
-          >
-            {days.map(day => (
-              <option key={day} value={day}>{day}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Main Dashboard */}
-        <div className="grid md:grid-cols-2 gap-6 mb-8">
-          {/* Tasks Panel */}
-          <div className="bg-white rounded-2xl p-6 shadow-2xl">
-            <h2 className="text-2xl font-bold text-gray-800 text-center mb-6">📋 Tareas del Día</h2>
-            <ul className="space-y-3">
-              {tasks.map((task, index) => (
-                <li
-                  key={index}
-                  onClick={() => toggleTask(index)}
-                  className={`flex items-center p-4 rounded-xl cursor-pointer transition-all duration-300 hover:translate-x-2 ${
-                    dayData[index]
-                      ? 'bg-green-100 opacity-80'
-                      : 'bg-gray-50 hover:bg-gray-100'
-                  }`}
-                >
-                  <div
-                    className={`w-7 h-7 border-3 rounded-lg mr-4 flex items-center justify-center transition-all duration-300 flex-shrink-0 ${
-                      dayData[index]
-                        ? 'bg-green-500 border-green-500'
-                        : 'border-indigo-500'
-                    }`}
-                  >
-                    {dayData[index] && (
-                      <span className="text-white text-lg font-bold">✓</span>
-                    )}
-                  </div>
-                  <span
-                    className={`text-lg font-medium ${
-                      dayData[index]
-                        ? 'line-through text-green-600'
-                        : 'text-gray-800'
-                    }`}
-                  >
-                    {task}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <button
-              onClick={resetDay}
-              className="w-full mt-6 py-4 bg-red-500 text-white rounded-xl font-semibold text-lg hover:bg-red-600 transition-colors"
-            >
-              🔄 Reiniciar Día
-            </button>
+        {/* Header */}
+        <motion.header 
+          initial={{ opacity: 0, y: -50 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          transition={{ duration: 0.5 }}
+          className="flex flex-col md:flex-row items-center justify-between gap-4 p-6 bg-card rounded-2xl shadow-lg border border-border"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-2xl font-bold">
+              P
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold">ProductivApp <span className="text-primary text-sm">v2</span></h1>
+              <p className="text-muted-foreground">Welcome back, Dante!</p>
+            </div>
           </div>
+          <div className="flex items-center gap-4">
+            <ExportButton data={appState} />
+            <Button variant="outline" className="flex items-center gap-2">
+              <CalendarDays size={20} />
+              <span>{dayDisplay}</span>
+            </Button>
+          </div>
+        </motion.header>
 
-          {/* Chart Panel */}
-          <div className="bg-white rounded-2xl p-6 shadow-2xl">
-            <h2 className="text-2xl font-bold text-gray-800 text-center mb-6">📊 Progreso</h2>
-            <div className="h-64 relative">
-              <Doughnut data={pieData} options={pieOptions} />
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-5xl font-bold text-indigo-500">{percentage}%</span>
-                <span className="text-gray-500 mt-2">Completado</span>
+        {/* Main Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left Column - Tasks */}
+          <motion.div
+            initial={{ opacity: 0, x: -50 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="lg:col-span-2 space-y-8"
+          >
+            <WeeklyGoal goal={appState.weeklyGoal} onUpdateGoal={handleUpdateWeeklyGoal} />
+
+            <div className="bg-card rounded-2xl p-6 shadow-lg border border-border">
+              <h2 className="text-2xl font-bold text-foreground mb-6">📋 Your Daily Tasks</h2>
+              <FilterBar
+                selectedCategory={selectedCategoryFilter}
+                setSelectedCategory={setSelectedCategoryFilter}
+                selectedPriority={selectedPriorityFilter}
+                setSelectedPriority={setSelectedPriorityFilter}
+                onAddTask={() => setIsAddTaskModalOpen(true)}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+              />
+              {filteredTasks.length > 0 ? (
+                <TaskList
+                  tasks={filteredTasks}
+                  onReorder={handleReorderTasks}
+                  onToggleTask={handleToggleTask}
+                  onDeleteTask={handleDeleteTask}
+                  onUpdateTask={handleUpdateTask}
+                />
+              ) : (
+                <p className="text-muted-foreground text-center py-8">No tasks found for {dayDisplay}.</p>
+              )}
+            </div>
+
+            <TrendsChart dailyCompletions={dailyCompletionsLast30Days} />
+          </motion.div>
+
+          {/* Right Column - Stats & Badges */}
+          <motion.div
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="lg:col-span-1 space-y-8"
+          >
+            {/* Daily Progress */}
+            <div className="bg-card rounded-2xl p-6 shadow-lg border border-border">
+              <h2 className="text-2xl font-bold text-foreground text-center mb-6">🎯 Daily Progress</h2>
+              <div className="h-48 relative">
+                <Doughnut data={pieData} options={{ responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { display: false } } }} />
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-5xl font-bold text-primary">{percentageToday}%</span>
+                  <span className="text-muted-foreground mt-2">Completado</span>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Weekly Stats */}
-        <div className="bg-white rounded-2xl p-6 shadow-2xl mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 text-center mb-6">📈 Estadísticas Semanales</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white p-6 rounded-xl text-center">
-              <div className="text-3xl font-bold">{weeklyAvg}%</div>
-              <div className="text-sm opacity-90 mt-1">Promedio Semanal</div>
+            {/* Stats Cards */}
+            <div className="grid grid-cols-2 gap-4">
+              <StatsCard 
+                title="Current Streak"
+                value={weeklyStats.maxStreak}
+                icon={<Flame size={28} />}
+                color="bg-amber-500"
+                delay={0}
+              />
+              <StatsCard 
+                title="Weekly Avg"
+                value={`${weeklyStats.weeklyAvg}%`}
+                icon={<BarChart2 size={28} />}
+                color="bg-blue-500"
+                delay={0.1}
+              />
+              <StatsCard 
+                title="Total Done"
+                value={weeklyStats.totalCompleted}
+                icon={<CheckCircle2 size={28} />}
+                color="bg-green-500"
+                delay={0.2}
+              />
+              <StatsCard 
+                title="Best Day"
+                value={weeklyStats.bestDayScore > 0 ? format(new Date(weeklyStats.bestDayDate), 'MMM d') : '-'}
+                icon={<Trophy size={28} />}
+                color="bg-purple-500"
+                delay={0.3}
+              />
             </div>
-            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white p-6 rounded-xl text-center">
-              <div className="text-3xl font-bold">{bestDayScore > 0 ? bestDay : '-'}</div>
-              <div className="text-sm opacity-90 mt-1">Mejor Día</div>
-            </div>
-            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white p-6 rounded-xl text-center">
-              <div className="text-3xl font-bold">{totalCompleted}</div>
-              <div className="text-sm opacity-90 mt-1">Tareas Totales</div>
-            </div>
-            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white p-6 rounded-xl text-center">
-              <div className="text-3xl font-bold">{maxStreak}</div>
-              <div className="text-sm opacity-90 mt-1">Racha Actual</div>
-            </div>
-          </div>
-          <div className="h-64">
-            <Bar data={weeklyData} options={barOptions} />
-          </div>
+
+            <BadgeDisplay badges={appState.badges} />
+            <MotivationalQuote />
+          </motion.div>
         </div>
       </div>
+      <AddTaskModal
+        isOpen={isAddTaskModalOpen}
+        onClose={() => setIsAddTaskModalOpen(false)}
+        onAdd={handleAddTask}
+      />
     </div>
   );
 }

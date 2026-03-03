@@ -2,8 +2,94 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Light Mode Colors */
+  --background: #F8FAFC;
+  --foreground: #1E293B;
+  --card: #FFFFFF;
+  --card-foreground: #1E293B;
+  --popover: #FFFFFF;
+  --popover-foreground: #1E293B;
+  --primary: #2563EB;
+  --primary-foreground: #FFFFFF;
+  --secondary: #E2E8F0;
+  --secondary-foreground: #64748B;
+  --muted: #F1F5F9;
+  --muted-foreground: #64748B;
+  --accent: #22C55E;
+  --accent-foreground: #FFFFFF;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --border: #E2E8F0;
+  --input: #E2E8F0;
+  --ring: #2563EB;
+
+  /* Dark Mode Colors */
+  --dark-background: #0F172A;
+  --dark-foreground: #F1F5F9;
+  --dark-card: #1E293B;
+  --dark-card-foreground: #F1F5F9;
+  --dark-primary: #60A5FA;
+  --dark-primary-foreground: #1E293B;
+  --dark-secondary: #334155;
+  --dark-secondary-foreground: #94A3B8;
+  --dark-muted: #1E293B;
+  --dark-muted-foreground: #94A3B8;
+  --dark-accent: #4ADE80;
+  --dark-accent-foreground: #1E293B;
+  --dark-destructive: #F87171;
+  --dark-destructive-foreground: #1E293B;
+  --dark-border: #334155;
+  --dark-input: #334155;
+  --dark-ring: #60A5FA;
+
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: var(--dark-background);
+  --foreground: var(--dark-foreground);
+  --card: var(--dark-card);
+  --card-foreground: var(--dark-card-foreground);
+  --primary: var(--dark-primary);
+  --primary-foreground: var(--dark-primary-foreground);
+  --secondary: var(--dark-secondary);
+  --secondary-foreground: var(--dark-secondary-foreground);
+  --muted: var(--dark-muted);
+  --muted-foreground: var(--dark-muted-foreground);
+  --accent: var(--dark-accent);
+  --accent-foreground: var(--dark-accent-foreground);
+  --destructive: var(--dark-destructive);
+  --destructive-foreground: var(--dark-destructive-foreground);
+  --border: var(--dark-border);
+  --input: var(--dark-input);
+  --ring: var(--dark-ring);
+}
+
+* {
+  border-color: var(--border);
+}
+
 body {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--muted);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--secondary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--secondary-foreground);
 }
